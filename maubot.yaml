@@ -1,0 +1,22 @@
+maubot: 0.1.0
+id: org.fedoraproject.infra.meeting-summary
+version: 0.0.1
+license: GPL-3.0-or-later
+modules:
+  - meeting_summary
+main_class: MeetingSummary
+
+#  Extra files that the upcoming build tool should include in the mbp file.
+config: true
+extra_files:
+  - base-config.yaml
+
+meta:
+  display_name: Meeting Summarizer
+  description: Summarize Meetbot meetings
+  author: Aurélien Bompard <aurelien@bompard.org>
+
+dependencies:
+  - mautrix>=0.20.0,<0.21
+  - maubot>=0.4.0,<0.5
+  - google-genai>=1.29.0,<2.0.0

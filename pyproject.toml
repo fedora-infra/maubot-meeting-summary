@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "meeting-summary"
+version = "0.1.0"
+description = "Summarize meeting logs with AI"
+authors = ["Aurélien Bompard <aurelien@bompard.org>"]
+license = "GPL-3.0-or-later"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+google-genai = "^1.29.0"
+maubot = {version = "^0.5.2", extras = ["encryption"]}
+
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.12.8"
+black = "^25.1.0"
+mypy = "^1.18.2"
+reuse = "^5.1.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.mypy]
+strict = true
