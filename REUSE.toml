@@ -4,7 +4,7 @@ SPDX-PackageSupplier = "Aurélien Bompard <aurelien@bompard.org>"
 SPDX-PackageDownloadLocation = "https://codeberg.org/abompard/meeting-summary"
 
 [[annotations]]
-path = ["**.toml", "**.yaml", "**.md", "**/.gitignore"]
+path = ["**.toml", "**.yaml", "**.md", "**/.gitignore", ".github/**"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "Aurélien Bompard <aurelien@bompard.org>"
 SPDX-License-Identifier = "GPL-3.0-or-later"
