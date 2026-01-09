@@ -10,6 +10,7 @@ readme = "README.md"
 python = "^3.11"
 google-genai = "^1.29.0"
 maubot = {version = "^0.5.2", extras = ["encryption"]}
+cashews = "^7.4.0"
 
 
 [tool.poetry.group.dev.dependencies]

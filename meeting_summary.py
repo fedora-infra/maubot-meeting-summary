@@ -5,11 +5,13 @@
 import asyncio
 import re
 from contextlib import suppress
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Type, cast
 from urllib.parse import urlparse
 
 from aiohttp.web import HTTPError
+from cashews import cache
 from google import genai
 from google.genai.types import GenerateContentResponse, Part
 from maubot import MessageEvent, Plugin  # type: ignore
@@ -17,8 +19,10 @@ from maubot.handlers import event
 from mautrix import errors
 from mautrix.types import (
     CanonicalAliasStateEventContent,
+    EventID,
     EventType,
     MessageType,
+    ReactionEvent,
     RoomAlias,
     RoomID,
 )
@@ -57,6 +61,15 @@ class Config(BaseProxyConfig):
         helper.copy("meetings_directory")
 
 
+@dataclass
+class CachedData:
+    summary: str
+    message_id: EventID
+    log_url: str
+    path: str
+    members: list[str]
+
+
 class MeetingSummary(Plugin):
     config: Config  # pyright: ignore[reportIncompatibleVariableOverride]
 
@@ -66,6 +79,7 @@ class MeetingSummary(Plugin):
         self.gemini = genai.Client(
             api_key=self.config["gemini"]["api_key"],
         )
+        cache.setup("mem://")  # In-memory cache
 
     async def stop(self) -> None:
         pass
@@ -103,6 +117,56 @@ class MeetingSummary(Plugin):
             f"Detected Text Log message from meetbot in {room_name} with URL: {url}"
         )
         await self.handle_meeting_log(evt, url)
+
+    @event.on(EventType.REACTION)  # type: ignore
+    async def on_reaction(self, evt: ReactionEvent) -> None:
+        if evt.sender == self.client.mxid:
+            self.log.debug("Ignoring my own reactions")
+            return
+        # Get the event that was reacted to
+        reacted_event_id = evt.content.relates_to.event_id
+        if reacted_event_id is None:
+            self.log.debug("No reacted_event_id")
+            return
+        reacted_event: MessageEvent = await self.client.get_event(
+            evt.room_id, reacted_event_id
+        )
+
+        # Check if the reacted message is from our bot
+        if reacted_event.sender != self.client.mxid:
+            self.log.debug(
+                f"The reacted message is not from us ({self.client.mxid}), it's from {reacted_event.sender}"
+            )
+            return
+
+        # Try to get the cached data
+        cache_key = f"{evt.room_id}:{reacted_event_id}"
+        cached_data = await cache.get(cache_key)
+        if cached_data is None:
+            # Not a message we care about
+            self.log.debug(f"No data in the cache for {cache_key}")
+            return
+        cached_data = CachedData(**cached_data)
+
+        # Check if the reactor is one of the meeting members
+        if evt.sender not in cached_data.members:
+            self.log.debug(
+                "The reactor is not a meeting member. Reactor is %s, meeting members are: %s",
+                evt.sender,
+                ", ".join(cached_data.members),
+            )
+            return
+
+        if evt.content.relates_to.key == "✅":
+            # Save the summary to file
+            await self._save_summary_to_file(
+                cached_data.summary,
+                cached_data.path,
+                validated=True,
+            )
+        elif evt.content.relates_to.key == "❌":
+            # Regenerate the summary
+            await self.repost_summary(reacted_event, cached_data)
 
     async def handle_meeting_log(self, evt: MessageEvent, url: str) -> None:
         # reaction_event_id = await evt.react("👀")
@@ -217,6 +281,21 @@ class MeetingSummary(Plugin):
         summary_path = urlparse(url).path
         summary_path = summary_path[: -len(".log.txt")] + ".summary.md"
         summary_path = summary_path.lstrip("/")
+        # Store in cache with 1 day expiry
+        cache_key = f"{evt.room_id}:{response_event_id}"
+        await cache.set(
+            cache_key,
+            asdict(
+                CachedData(
+                    summary=summary,
+                    message_id=response_event_id,
+                    path=summary_path,
+                    members=usernames,
+                    log_url=url,
+                )
+            ),
+            expire="1d",
+        )
         # Store the summary
         await self._save_summary_to_file(
             summary,
@@ -245,3 +324,9 @@ class MeetingSummary(Plugin):
         # (even if it already exists, because we always store the unvalidated summary first)
         file_path.write_text(summary)
         self.log.info(f"Saved summary to {file_path}")
+
+    async def repost_summary(self, evt: MessageEvent, cached_data: CachedData) -> None:
+        # Edit the message to show we're regenerating
+        await evt.edit("OK, let me generate another summary…")
+        await cache.delete(f"{evt.room_id}:{cached_data.message_id}")
+        await self.handle_meeting_log(evt, cached_data.log_url)
