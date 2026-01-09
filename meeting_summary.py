@@ -5,7 +5,9 @@
 import asyncio
 import re
 from contextlib import suppress
+from pathlib import Path
 from typing import Type, cast
+from urllib.parse import urlparse
 
 from aiohttp.web import HTTPError
 from google import genai
@@ -52,6 +54,7 @@ class Config(BaseProxyConfig):
         helper.copy_dict("gemini")
         helper.copy("meetbot_id")
         helper.copy("ignored_participants")
+        helper.copy("meetings_directory")
 
 
 class MeetingSummary(Plugin):
@@ -59,7 +62,7 @@ class MeetingSummary(Plugin):
 
     async def start(self) -> None:
         self.config.load_and_update()
-        self.log.debug("Loaded config: %r", dict(self.config._data))
+        # self.log.debug("Loaded config: %r", dict(self.config._data))
         self.gemini = genai.Client(
             api_key=self.config["gemini"]["api_key"],
         )
@@ -80,9 +83,9 @@ class MeetingSummary(Plugin):
             # )
             return
         if evt.sender != self.config["meetbot_id"]:
-            # self.log.debug(
-            #     f"Ignoring message from {evt.sender} in {room_alias or evt.room_id}"
-            # )
+            self.log.debug(
+                f"Ignoring message from {evt.sender} in {room_alias or evt.room_id}, I'm only listening to {self.config['meetbot_id']}"
+            )
             return
 
         await evt.mark_read()
@@ -113,7 +116,7 @@ class MeetingSummary(Plugin):
         usernames = self.extract_usernames(meeting_log)
         # Ask AI to give a summary of the meeting
         summary = await self.get_summary(meeting_log)
-        await self.post_summary(evt, summary, usernames)
+        await self.post_summary(evt, summary, usernames, url)
         # Inform that we're done
         # await self.client.redact(evt.room_id, reaction_event_id, reason="done.")
         await self.client.set_typing(evt.room_id, timeout=0)
@@ -139,10 +142,10 @@ class MeetingSummary(Plugin):
                 response.raise_for_status()
                 doc_data = await response.text()
         except HTTPError as e:
-            self.log.error(f"Failed to fetch meeting log from {url}: {e}")
+            self.log.exception(f"Failed to fetch meeting log from {url}: {e}")
             raise MeetingLogFetchingError(f"❌ Failed to fetch meeting log: {e}")
         except Exception as e:
-            self.log.error(f"Unexpected error processing meeting log: {e}")
+            self.log.exception(f"Unexpected error processing meeting log: {e}")
             raise MeetingLogFetchingError(f"❌ Error processing meeting log: {e}")
         self.log.debug(
             f"Successfully fetched meeting log content ({len(doc_data)} characters)"
@@ -188,7 +191,7 @@ class MeetingSummary(Plugin):
         return response.text
 
     async def post_summary(
-        self, evt: MessageEvent, summary: str | None, usernames: list[str]
+        self, evt: MessageEvent, summary: str | None, usernames: list[str], url: str
     ) -> None:
         if summary is None:
             self.log.warning(
@@ -210,3 +213,35 @@ class MeetingSummary(Plugin):
         )
         await self.client.react(evt.room_id, response_event_id, "✅")
         await self.client.react(evt.room_id, response_event_id, "❌")
+
+        summary_path = urlparse(url).path
+        summary_path = summary_path[: -len(".log.txt")] + ".summary.md"
+        summary_path = summary_path.lstrip("/")
+        # Store the summary
+        await self._save_summary_to_file(
+            summary,
+            summary_path,
+            validated=False,
+        )
+
+    async def _save_summary_to_file(
+        self, summary: str, path: str, validated: bool = False
+    ) -> None:
+        """Save the summary to a file in the meetings directory."""
+        if not self.config["meetings_directory"]:
+            return  # Disabled
+
+        if not validated:
+            summary = (
+                "*Note: This summary has not been validated by the attendants.*\n\n"
+                + summary
+            )
+
+        meetings_dir = Path(self.config["meetings_directory"])
+        file_path = meetings_dir / path
+        # Create parent directories if they don't exist
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        # Write the summary to the file
+        # (even if it already exists, because we always store the unvalidated summary first)
+        file_path.write_text(summary)
+        self.log.info(f"Saved summary to {file_path}")

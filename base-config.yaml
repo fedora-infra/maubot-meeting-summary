@@ -2,5 +2,6 @@ gemini:
   api_key: your-api-key-here
   model: "gemini-2.5-pro"
 meetbot_id: "@meetbot:fedora.im"
+meetings_directory: ""
 ignored_participants:
   - "@zodbot:fedora.im"
