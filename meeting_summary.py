@@ -310,11 +310,11 @@ class MeetingSummary(Plugin):
         if not self.config["meetings_directory"]:
             return  # Disabled
 
-        if not validated:
-            summary = (
-                "*Note: This summary has not been validated by the attendants.*\n\n"
-                + summary
-            )
+        if validated:
+            preface = "*Note: This summary is AI-generated but has been validated by at least one of the attendants.*"
+        else:
+            preface = "*Note: This summary is AI-generated and has not been validated by the attendants, it may be incorrect.*"
+        summary = preface + "\n\n" + summary
 
         meetings_dir = Path(self.config["meetings_directory"])
         file_path = meetings_dir / path
