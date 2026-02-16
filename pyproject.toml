@@ -1,16 +1,21 @@
-[tool.poetry]
+[project]
 name = "meeting-summary"
 version = "0.1.0"
 description = "Summarize meeting logs with AI"
-authors = ["Aurélien Bompard <aurelien@bompard.org>"]
+authors = [{ name = "Aurélien Bompard", email = "aurelien@bompard.org" }]
 license = "GPL-3.0-or-later"
+license-files = ["LICENSES/*.txt"]
 readme = "README.md"
+requires-python = ">=3.11,<4.0"
+keywords = ["bot", "matrix", "llm", "ai"]
+dependencies = [
+    "maubot[encryption] (>=0.5.2,<1.0)",
+    "cashews (>=7.4.0,<8.0.0)",
+]
 
-[tool.poetry.dependencies]
-python = "^3.11"
-google-genai = "^1.29.0"
-maubot = {version = "^0.5.2", extras = ["encryption"]}
-cashews = "^7.4.0"
+[project.optional-dependencies]
+google = ["google-genai (>=1.29.0,<2.0)"]
+openai = ["openai (>=2.15.0,<3.0.0)"]
 
 
 [tool.poetry.group.dev.dependencies]
