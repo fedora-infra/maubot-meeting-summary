@@ -76,13 +76,21 @@ class MeetingSummary(Plugin):
     async def start(self) -> None:
         self.config.load_and_update()
         # self.log.debug("Loaded config: %r", dict(self.config._data))
-        self.gemini = genai.Client(
-            api_key=self.config["gemini"]["api_key"],
-        )
         cache.setup("mem://")  # In-memory cache
+        self._make_llm_client()
 
     async def stop(self) -> None:
         pass
+
+    def _make_llm_client(self) -> None:
+        self.gemini = genai.Client(
+            api_key=self.config["gemini"]["api_key"],
+        )
+
+    def on_external_config_update(self) -> None:
+        super().on_external_config_update()
+        # The API key may have changed
+        self._make_llm_client()
 
     @classmethod
     def get_config_class(cls) -> Type[BaseProxyConfig]:
